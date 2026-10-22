@@ -2,6 +2,7 @@
 
 ```sh
 brew install --cask jewsh1r/tap/capslockswitcher
+brew trust --cask jewsh1r/tap/capslockswitcher  # Homebrew 7+: keep `brew upgrade` loading it
 ```
 
 | Cask | App |
