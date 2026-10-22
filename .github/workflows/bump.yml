@@ -1,0 +1,35 @@
+name: Bump cask to latest release
+
+# Polls the app repository instead of being triggered by it, so no cross-repo token is needed.
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Update version and checksum
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APP_REPO: ${{ github.repository_owner }}/CapsLockSwitcher
+        run: |
+          tag=$(gh release view --repo "$APP_REPO" --json tagName --jq .tagName)
+          version=${tag#v}
+          current=$(sed -nE 's/^  version "(.*)"/\1/p' Casks/capslockswitcher.rb)
+          if [ "$version" = "$current" ]; then
+            echo "Cask already at $version"
+            exit 0
+          fi
+          gh release download "$tag" --repo "$APP_REPO" --pattern CapsLockSwitcher.app.zip --dir "$RUNNER_TEMP"
+          sha=$(sha256sum "$RUNNER_TEMP/CapsLockSwitcher.app.zip" | cut -d' ' -f1)
+          sed -i -E "s/^  version \".*\"/  version \"$version\"/; s/^  sha256 \".*\"/  sha256 \"$sha\"/" Casks/capslockswitcher.rb
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "capslockswitcher $version"
+          git push

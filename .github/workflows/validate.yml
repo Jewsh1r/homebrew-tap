@@ -1,0 +1,48 @@
+name: Validate casks
+
+on:
+  push:
+  pull_request:
+  # Pushes made with GITHUB_TOKEN (the bump job) don't trigger push workflows.
+  workflow_run:
+    workflows: ["Bump cask to latest release"]
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: macos-15
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+      HOMEBREW_NO_ANALYTICS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Register local tap
+        run: brew tap "${GITHUB_REPOSITORY_OWNER}/tap" "$GITHUB_WORKSPACE"
+      - name: Check style
+        run: brew style Casks/capslockswitcher.rb
+      - name: Audit cask
+        env:
+          HOMEBREW_GITHUB_API_TOKEN: ${{ github.token }}
+        # The release is ad-hoc signed, not notarized.
+        run: brew audit --cask --online --except=signing "${GITHUB_REPOSITORY_OWNER}/tap/capslockswitcher"
+      - name: Verify download and checksum
+        run: brew fetch --cask "${GITHUB_REPOSITORY_OWNER}/tap/capslockswitcher"
+      - name: Verify installation without launching
+        run: |
+          appdir="$RUNNER_TEMP/cask-apps"
+          mkdir -p "$appdir"
+          brew install --cask --appdir="$appdir" "${GITHUB_REPOSITORY_OWNER}/tap/capslockswitcher"
+          app="$appdir/CapsLockSwitcher.app"
+          test -x "$app/Contents/MacOS/CapsLockSwitcher"
+          lipo "$app/Contents/MacOS/CapsLockSwitcher" -verify_arch arm64
+          lipo "$app/Contents/MacOS/CapsLockSwitcher" -verify_arch x86_64
+          codesign --verify "$app"
+          if xattr -r "$app" | grep -q com.apple.quarantine; then
+            echo "Quarantine marker remains after installation"
+            exit 1
+          fi
+          brew uninstall --cask "${GITHUB_REPOSITORY_OWNER}/tap/capslockswitcher"
+          test ! -e "$app"
